@@ -204,8 +204,8 @@ class VDE(BaseEstimator, nn.Module):
     def forward(self, x):
         u = self.encoder(x)
         u_p = self.lmbd(u)
-        out = self.decoder(u_p)
-        return out, u
+        #out = self.decoder(u_p)
+        return u_p, u #out, u
 
     def _rec(self, x_decoded_mean, x, loss_fn):
         z_mean, z_log_var = self.lmbd.mu, self.lmbd.log_v
@@ -233,30 +233,30 @@ class VDE(BaseEstimator, nn.Module):
         o, u = self(x)
 
         autocorr_loss = 0.
-        rec_loss = self._rec(o, y.detach(), self.loss_fn)
+        #rec_loss = self._rec(o, y.detach(), self.loss_fn)
 
-        loss = rec_loss
+        #loss = rec_loss
         if self.autocorr:
             v = self.encoder(y)
             autocorr_loss = (1 - self._corr(u, v))
-            loss = rec_loss + autocorr_loss
+            loss = autocorr_loss # rec_loss + autocorr_loss
 
         self.optimizer.zero_grad()
         loss.backward()
-        return loss, rec_loss, autocorr_loss, x
+        return loss, autocorr_loss, x # rec_loss, autocorr_loss, x
 
     def _train(self, data, print_every=100):
         self.train()
 
         for t, X in enumerate(data):
-            loss, rec_loss, autocorr_loss, _ = self.compute_loss(X)
+            loss, autocorr_loss, _ = self.compute_loss(X)
 
             if (t + 1) % print_every == 0 and self.verbose:
-                print('Batch %d, loss = %.4f' % (t + 1, loss.data[0]))
+                print('Autocorr_only, Batch %d, loss = %.4f' % (t + 1, loss.data[0]))
 
                 if self.autocorr:
                     print('rec_loss = %.4f, '
-                          'autocorr_loss = %.4f' % (rec_loss.data[0],
+                          'autocorr_loss = %.4f' % (loss.data[0],
                                                     autocorr_loss.data[0]))
             self.optimizer.step()
 
