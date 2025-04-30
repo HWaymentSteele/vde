@@ -11,12 +11,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-from torch.utils.data import DataLoader
+from torch.utils.data import TensorDataset, DataLoader
 
 from .utils import initialize_weights
 
 __all__ = ['VDE']
-
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def Layer(i, o, activation=None, p=0., bias=True):
     model = [nn.Linear(i, o, bias=bias)]
@@ -37,21 +37,19 @@ def Layer(i, o, activation=None, p=0., bias=True):
         model += [nn.Dropout(p)]
     return nn.Sequential(*model)
 
-
 class Swish(nn.Module):
     def __init__(self):
-        super(Swish, self).__init__()
+        super().__init__()
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         return x * self.sigmoid(x)
 
-
 class Encoder(nn.Module):
     """Encoder network for dimensionality reduction to latent space"""
     def __init__(self, input_size, output_size=1, hidden_layer_depth=5,
                  hidden_size=1024, activation='Swish', dropout_rate=0.):
-        super(Encoder, self).__init__()
+        super().__init__()
         self.hidden_size = hidden_size
         self.input_size = input_size
         self.output_size = output_size
@@ -68,11 +66,10 @@ class Encoder(nn.Module):
         out = self.output_layer(out)
         return out
 
-
 class Lambda(nn.Module):
     """Application of Gaussian noise to the latent space"""
     def __init__(self, i=1, o=1, scale=1E-3):
-        super(Lambda, self).__init__()
+        super().__init__()
 
         self.scale = scale
         self.z_mean = nn.Linear(i, o)
@@ -85,12 +82,12 @@ class Lambda(nn.Module):
                                     ).type_as(self.log_v)
         return self.mu + torch.exp(self.log_v / 2.) * eps
 
-
 class Decoder(nn.Module):
     """Decoder network for reconstruction from latent space"""
     def __init__(self, output_size, input_size=1, hidden_layer_depth=5,
                  hidden_size=1024, activation='Swish', dropout_rate=0.):
-        super(Decoder, self).__init__()
+        super().__init__()
+
         self.input_layer = Layer(input_size, input_size, activation=activation)
 
         net = [Layer(input_size, hidden_size,
@@ -106,7 +103,6 @@ class Decoder(nn.Module):
         out = self.hidden_network(out)
         out = self.output_layer(out)
         return out
-
 
 class VDE(nn.Module):
     """Variational Dynamical Encoder (VDE)
@@ -153,8 +149,8 @@ class VDE(nn.Module):
                  optimizer='Adam', activation='Swish', loss='MSELoss',
                  sliding_window=False, autocorr=True, cuda=False,
                  verbose=True):
+        super().__init__()
 
-        super(VDE, self).__init__()
         self.encoder = Encoder(input_size, output_size=encoder_size,
                                hidden_layer_depth=hidden_layer_depth,
                                hidden_size=hidden_size, activation=activation,
@@ -281,15 +277,27 @@ class VDE(nn.Module):
 
         self.is_fitted = True
 
-    def _batch_transform(self, x):
-        y = []
-        for arr in np.array_split(x, x.shape[0] // self.batch_size):
-            out = self.encoder(Variable(
-                torch.from_numpy(arr).type(self.dtype))
-            ).cpu().data.numpy()
-            y.append(out.reshape(-1, self.encoder_size))
 
-        return np.concatenate(y, axis=0)
+    def _batch_transform(self, x):
+        """Apply the encoder in batches to an input array x using DataLoader."""
+        self.encoder.eval()  # Ensure the encoder is in eval mode
+
+        x = np.asarray(x)
+        tensor_x = torch.from_numpy(x).float().to(DEVICE)
+        print('h', tensor_x.shape)
+
+        dataset = TensorDataset(tensor_x)
+        loader = DataLoader(dataset, batch_size=self.batch_size,
+        shuffle=False, drop_last=False)
+
+        outputs = []
+
+        with torch.no_grad():
+            for i, batch in enumerate(loader):
+              out = self.encoder(batch[0].to(DEVICE))
+              outputs.append(out.cpu().numpy())
+
+        return np.concatenate(outputs, axis=0)
 
     def propagate(self, X, scale=None):
         self.eval()
@@ -308,8 +316,7 @@ class VDE(nn.Module):
     def transform(self, X):
         self.eval()
         if self.is_fitted:
-            out = [self._batch_transform(x) for x in X]
-            return out
+            return [self._batch_transform(x) for x in X]
         raise RuntimeError('Model needs to be fit.')
 
     def fit_transform(self, X):
