@@ -13,8 +13,6 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from msmbuilder.base import BaseEstimator
-
 from .utils import initialize_weights
 
 __all__ = ['VDE']
@@ -110,7 +108,7 @@ class Decoder(nn.Module):
         return out
 
 
-class VDE(BaseEstimator, nn.Module):
+class VDE(nn.Module):
     """Variational Dynamical Encoder (VDE)
 
     Non-linear dimensionality reduction using a time-lagged variational
