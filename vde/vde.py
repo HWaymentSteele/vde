@@ -256,15 +256,17 @@ class VDE(nn.Module):
 
     def _create_dataset(self, data):
         slide = self.lag_time if self.sliding_window else 1
-
-        t0 = np.concatenate([d[j::self.lag_time][:-1] for d in data
-                             for j in range(slide)], axis=0)
-        t1 = np.concatenate([d[j::self.lag_time][1:] for d in data
-                             for j in range(slide)], axis=0)
-        t = np.concatenate((t0.reshape(-1, self.input_size, 1),
-                            t1.reshape(-1, self.input_size, 1)), axis=-1)
-
-        return DataLoader(t, batch_size=self.batch_size, shuffle=True,
+        all_ts=[]
+        for d in data:
+          t0 = np.concatenate([d[j::self.lag_time][:-1]
+                              for j in range(slide)], axis=0)
+          t1 = np.concatenate([d[j::self.lag_time][1:]
+                              for j in range(slide)], axis=0)
+          t = np.concatenate((t0.reshape(-1, self.input_size, 1),
+                              t1.reshape(-1, self.input_size, 1)), axis=-1)
+          all_ts.append(t)
+        all_ts = np.concatenate(all_ts)
+        return DataLoader(all_ts, batch_size=self.batch_size, shuffle=True,
                           drop_last=True)
 
     def fit(self, X):
@@ -284,7 +286,6 @@ class VDE(nn.Module):
 
         x = np.asarray(x)
         tensor_x = torch.from_numpy(x).float().to(DEVICE)
-        print('h', tensor_x.shape)
 
         dataset = TensorDataset(tensor_x)
         loader = DataLoader(dataset, batch_size=self.batch_size,
